@@ -529,8 +529,14 @@ The `OCKStore` class provided with CareKit is a fast, secure, on-device store an
 all our developers, so CareKit also allows you to write your own store. For example, you could write a wrapper around a web server, or even a simple JSON file. Any class that
 conforms to the `OCKStoreProtocol` can be used in place of the default store.
 
-Writing a CareKit store adapter requires defining the entities that will live in your store and implementing asynchronous **Create**, **Read**, **Update**, and **Delete** methods for each.
-Stores are free to define their own types, as long as those types conform to a certain protocol. For example, if you are writing a store that can hold tasks, you might do it like this.
+In order to use a custom store, you need to define the entities that will live in your store. Stores are free to define their own types, as long as those types conform to the associated CareKit protocol (for example, OCKAnyTask for tasks, or OCKAnyPatient for patients).
+The CareKit store is meant to be used as an abstract wrapper around a concrete store. For that reason, if the store is based around local data (e.g., local files or a Core Data store), you will also need to define the models for those.
+
+Once your models have been defined, you will need to create a class to instantiate your store. Any store that conforms to the `OCKStoreProtocol` can be used by the views in CareKit and CareKitUI (you could also conform to `OCKAnyStoreProtocol`, but your store would lose type safety and default implementations of certain methods). 
+`OCKStoreProtocol` requires implementing asynchronous **Create**, **Read**, **Update**, and **Delete** methods for each type CareKit uses. Remember to alert the appropriate delegates about the change in each of those methods, so that CareKit can update its views.
+You may also define your own queries and use those instead of CareKit's default implementation.
+
+For example, if you are writing a store that can hold tasks, you might do it like this.
 
 ```swift
 import CareKitStore
@@ -559,7 +565,7 @@ struct MyTaskQuery: OCKAnyTaskQuery {
     let difficult: DifficultyRating?
 }
 
-class MyStore: OCKStoreProtocol {
+class MyTaskStore: OCKAnyTaskStore {
 
     typealias Task = MyTask
     typealias TaskQuery = MyTaskQuery
@@ -576,7 +582,7 @@ class MyStore: OCKStoreProtocol {
 ```
 
 Using the four basic CRUD methods you supply, CareKit is able to use protocol extensions to imbue your store with extra functionality. For example, a store that implements
-the four CRUD methods for tasks automatically receives the following methods.
+the four CRUD methods for tasks automatically receives the following methods, as well as their async/await version (for iOS 15 and above).
 
 ```swift
 func fetchTask(withID id: String, callbackQueue: DispatchQueue, completion: @escaping OCKResultClosure<Task>)
@@ -585,10 +591,20 @@ func updateTask(_ task: Task, callbackQueue: DispatchQueue, completion: OCKResul
 func deleteTask(_ task: Task, callbackQueue: DispatchQueue, completion: OCKResultClosure<Task>?)
 ```
 
+Similarly, if you choose to conform to the `OCKAnyVersionableTask` protocol for your tasks, CareKit will add default implementations of the following required methods:
+
+```swift
+func fetchEvents(taskID: String, query: OCKEventQuery, callbackQueue: DispatchQueue = .main, completion: @escaping OCKResultClosure<[OCKEvent<Task, Outcome>]>)
+func fetchEvent(forTask task: Task, occurrence: Int, callbackQueue: DispatchQueue, completion: @escaping OCKResultClosure<Event>)
+```
+
 Methods provided via protocol extensions employ naive implementations. As the developer, you are free to provide your own implementations that leverage the capabilities of
 your underlying data store to achieve greater performance or efficiency.
 
-If you are considering implementing your own store, read over the protocol notes and documentation carefully.
+While you could use `OCKStoreProtocol` to replace a single data type (such as tasks in the example above), the CareKit view controllers require the full `OCKAnyStoreProtocol` in order to work. If you choose to use any of the provided view controllers, your store will need to have implementations for all data types.
+Note that some of CareKit's views (particularly the task views) create CareKit's provided types (for example, `OCKOutcome` as their outcome) by default. However, all views use the store's `Any` methods (for example, `addAnyOutcome`). As said, you are free to provide your own implementation for these methods in order to handle that.
+
+If you are considering implementing your own store, read over the protocol notes and documentation carefully. The required protocols can be found in the documentation under `Data Customization`.
 
 # Integrating with ResearchKit <a name="integrating-with-researchkit"></a>
 
